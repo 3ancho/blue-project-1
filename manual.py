@@ -3,7 +3,22 @@ import sys
 from socket import socket, AF_INET, SOCK_STREAM, error as SocketError
 from json import loads as json_loads
 import ckbot.logical 
-ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
+
+#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
+# Uncomment above line when using wireless transmitor
+
+
+# TODO: ruoran or xiangyu: change all print into progress
+
+class NoEnd ( Plan ):
+    def __init__(self, app):
+        Plan.__init__(self, app)
+
+    def behavior(self):
+        while True:
+            progress("Hello Printing")
+            yield self.forDuration(1)
+
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
@@ -97,6 +112,7 @@ class DrivingApp( JoyApp ):
         if testing:
             JoyApp.__init__(self, *arg,**kw)
         else:
+            progress("populating 3 robots!!!!")
             JoyApp.__init__(self, robot = {'count': 3},  *arg,**kw)
         
         self.testing = testing
@@ -123,17 +139,36 @@ class DrivingApp( JoyApp ):
             self.robot.at.left.set_mode(1) # Motor
 
     def onEvent(self,evt):
+
+        # First level events 
+        # * Auto mode
+        # * Manual mode
+        # * Exit
         if evt.type == KEYDOWN and evt.key == K_n: #up
             self.auto = 1
             print "Entering auto"
     
         if evt.type == KEYDOWN and evt.key == K_m: #up
             self.auto = 0
+            for plan in self.plans:
+                plan.stop()
             print "Entering manual"
 
+        # Exit
+        if evt.type == KEYDOWN and evt.key in [ K_ESCAPE ]: # Esc 
+            print "Exiting!"
+            
+            # Close socket connections
+            # stop all motors if not in testing mode
+            sys.exit(1)   
+
+        if evt.type == KEYDOWN and evt.key in [ K_p, K_o, K_DELETE ]: # stop
+            for i in range(4):
+                self.robot.off()
+
+        # Detail of Audo mode and Manual Mode
         if not self.auto:
             # Manual Mode
-
             if evt.type == KEYDOWN and evt.key == K_w: #up
                 self.state = evt.key
                 self.move_plan.direction = 1
@@ -146,14 +181,14 @@ class DrivingApp( JoyApp ):
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
   
-            elif evt.type == KEYDOWN and evt.key == K_a: #left
+            elif evt.type == KEYDOWN and evt.key == K_a: # rotate left
                 self.state = evt.key
                 #progress(str(self.cur_axis_pos))
                 self.rotate_plan.direction = 1
                 if not self.rotate_plan.isRunning():
                     self.rotate_plan.start()
   
-            elif evt.type == KEYDOWN and evt.key == K_d: #right
+            elif evt.type == KEYDOWN and evt.key == K_d: # rotate right
                 self.state = evt.key
                 self.rotate_plan.direction = -1
                 if not self.rotate_plan.isRunning():
@@ -171,34 +206,33 @@ class DrivingApp( JoyApp ):
                 if not self.turn_plan.isRunning():
                     self.turn_plan.start()
   
-            elif evt.type == KEYDOWN and evt.key == K_DELETE: # stop
-                for i in range(4):
-                    self.robot.off()
   
             # KEYUPs
-            elif evt.type == KEYUP and evt.key in [K_w, K_s] : # stop
+            elif evt.type == KEYUP and evt.key in [K_w, K_s] : # stop moving
                 self.move_plan.stop()
 
-            elif evt.type == KEYUP and evt.key in [K_a, K_d] : # stop
+            elif evt.type == KEYUP and evt.key in [K_a, K_d] : # stop rotating
                 self.rotate_plan.stop()
 
-            elif evt.type == KEYUP and evt.key in [K_q, K_e] : # stop
+            elif evt.type == KEYUP and evt.key in [K_q, K_e] : # stop turning
                 self.turn_plan.stop()
 
-            # Exit
-            elif evt.type == KEYDOWN and evt.key == K_ESCAPE: # Esc 
-                print "Exiting!"
-                sys.exit(1)   
 
         else: # This is auto mode block
             # Auto Mode
             # self.auto_pan.start()
             print "in auto mode, press 'm' to switch to manual mode"
+            self.no_end_plan = NoEnd(self)
+            self.no_end_plan.start()
 
     def onStop(self):
+        for plan in self.plans:
+            plan.stop()
+
         self.move_plan.stop()
         self.rotate_plan.stop()
         self.turn_plan.stop()
+        self.no_end_plan.stop()
         if not self.testing:
             for i in range(4):
                 self.robot.off()
@@ -275,6 +309,10 @@ class WaypointSensorApp( JoyApp ):
     return super( WaypointSensorApp, self ).onStop()
 
 def main():
+
+    # ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
+    # uncomment this at line 7 
+
     if len(sys.argv) > 1 and sys.argv[1] == "-t":
         flag = True
     else:
