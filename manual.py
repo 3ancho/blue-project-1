@@ -3,6 +3,8 @@ import sys
 from socket import socket, AF_INET, SOCK_STREAM, error as SocketError
 from json import loads as json_loads
 import ckbot.logical 
+import time
+from collections import deque
 
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
 # Uncomment above line when using wireless transmitor
@@ -10,24 +12,57 @@ import ckbot.logical
 
 # TODO: ruoran or xiangyu: change all print into progress
 
-class NoEnd ( Plan ):
+class AutoPlan ( Plan ):
     def __init__(self, app):
         Plan.__init__(self, app)
+        self.plan_step = None
+        self.cur_point = None
+        self.next_point = None
+        self.ave_f = None
+        self.ave_b = None
+
+    def onStart(self):
+        # rest positions
+        self.plan_step = 0 
+
+    def nextPoint(self):
+        progress("Let's move")
+        self.ave_f = 0
+        self.ave_b = 0
+        
 
     def behavior(self):
-        while True:
-            progress("Hello Printing")
-            yield self.forDuration(1)
+        while True: # while not reaching the goal point
+            queue = self.app.queue
 
+            # check the sensor 
+            if len(queue) > 0:
+                if not self.next_point and 'w' in queue[0]:
+                    self.cur_point = queue[0]['w'][0]
+                    self.next_point = queue[0]['w'][1]
+                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
+                            (self.cur_point, self.next_point) )
+                    
+                print queue[0]
+
+
+            # y-ok?
+
+            # distance ok?
+
+            # move!
+            progress("Auto mode step -- %d" % self.plan_step)
+            self.plan_step += 1
+            yield self.forDuration(1)
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
         Rorating axis servo is to adjust the platform (laser) 
         pointing direction, this happens when wheels are locked.
     """
-    def __init__(self, app, direction=1, unit=220, *arg, **kw):
+    def __init__(self, app, direction=1, unit=2, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
-        self.direction = direction
+        self.direction = None 
         self.unit = unit
 
     def onStart(self):
@@ -36,13 +71,16 @@ class Rotate( Plan ):
         
     def behavior(self):
         while True:
-            self.app.cur_axis_pos += self.direction * self.unit
+            #self.app.cur_axis_pos += self.direction * self.unit
             if self.app.testing:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
             else:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
-                self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
-            yield self.forDuration(0.05)
+                for i in range(150):
+                    #print "%.6f" % time.time()
+                    self.app.cur_axis_pos += self.direction * self.unit
+                    self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
+            yield self.forDuration(0.00001)
 
 class Move( Plan ):
     """ Move is a basic plan that will be called whenever we want to
@@ -54,9 +92,9 @@ class Move( Plan ):
 
     """
 
-    def __init__(self, app, direction=1, speed=0.2, *arg, **kw):
+    def __init__(self, app, direction=1, speed=0.1, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
-        self.direction = direction
+        self.direction = self.app.direction 
         self.speed = speed
 
     def change_direction(self):
@@ -68,6 +106,7 @@ class Move( Plan ):
                 print "Move -- Direction %s, torque %s" % (self.direction, self.speed) 
             else:
                 print "Move -- Direction %s, torque %s" % (self.direction, self.speed) 
+                self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * -1 * self.speed)
             yield self.forDuration(0.1)
@@ -85,7 +124,7 @@ class Turn( Plan ):
     """
     def __init__(self, app, direction=1, speed=0.1, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
-        self.direction = direction
+        self.direction = self.app.direction * -1
         self.speed = speed
 
     def behavior(self):
@@ -97,6 +136,7 @@ class Turn( Plan ):
                 self.app.robot.at.axis.go_slack()
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * self.speed)
+                self.app.cur_axis_pos = self.app.robot.at.axis.get_pos()
             yield self.forDuration(0.3)
 
     def onStop(self):
@@ -116,27 +156,32 @@ class DrivingApp( JoyApp ):
             JoyApp.__init__(self, robot = {'count': 3},  *arg,**kw)
         
         self.testing = testing
-        self.left_speed = unit_speed
-        self.right_speed = -1 * unit_speed
         self.spec = spec
+        self.direction = 1
+        self.queue = deque() 
 
     def onStart(self):
         self.output = self.setterOf(self.spec)
         self.auto = 0
         self.state = None
-        self.cur_axis_pos = -1042 # this is 'zero' 
+        self.cur_axis_pos = -122 # this is 'zero' 
         self.unit_turn = 200
         
         # Plan initialization
         self.move_plan = Move(self)
         self.turn_plan = Turn(self)
         self.rotate_plan = Rotate(self)
+        self.auto_plan = AutoPlan(self)
+        self.sensor = SensorPlan(self,("67.194.202.70",8080))
+        self.sensor.start()
 
         # Set the module mode
         if not self.testing:
             self.robot.at.axis.set_mode(0) # Servo
             self.robot.at.right.set_mode(1) # Motor  
             self.robot.at.left.set_mode(1) # Motor
+            if raw_input("Reset axis? (y/n)") == 'y':
+                self.robot.at.axis.set_pos(self.cur_axis_pos)
 
     def onEvent(self,evt):
 
@@ -160,7 +205,7 @@ class DrivingApp( JoyApp ):
             
             # Close socket connections
             # stop all motors if not in testing mode
-            sys.exit(1)   
+            self.stop()
 
         if evt.type == KEYDOWN and evt.key in [ K_p, K_o, K_DELETE ]: # stop
             for i in range(4):
@@ -169,40 +214,38 @@ class DrivingApp( JoyApp ):
         # Detail of Audo mode and Manual Mode
         if not self.auto:
             # Manual Mode
+            if evt.type == KEYDOWN and evt.key == K_z: #up
+                progress("Current direction %s, changing direction %s" % (self.direction, self.direction*-1))
+                self.direction = self.direction * -1
+
             if evt.type == KEYDOWN and evt.key == K_w: #up
-                self.state = evt.key
-                self.move_plan.direction = 1
+                self.move_plan.direction = self.direction 
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
 
             elif evt.type == KEYDOWN and evt.key == K_s: #down
-                self.state = evt.key
-                self.move_plan.direction = -1
+                self.move_plan.direction = self.direction * -1 
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
   
             elif evt.type == KEYDOWN and evt.key == K_a: # rotate left
-                self.state = evt.key
                 #progress(str(self.cur_axis_pos))
-                self.rotate_plan.direction = 1
+                self.rotate_plan.direction = -1 
                 if not self.rotate_plan.isRunning():
                     self.rotate_plan.start()
   
             elif evt.type == KEYDOWN and evt.key == K_d: # rotate right
-                self.state = evt.key
-                self.rotate_plan.direction = -1
+                self.rotate_plan.direction = 1 
                 if not self.rotate_plan.isRunning():
                     self.rotate_plan.start()
   
             elif evt.type == KEYDOWN and evt.key == K_q: # Turn
-                self.state = evt.key
-                self.turn_plan.direction = 1
+                self.turn_plan.direction = -1 
                 if not self.turn_plan.isRunning():
                     self.turn_plan.start()
   
             elif evt.type == KEYDOWN and evt.key == K_e: # Turn
-                self.state = evt.key
-                self.turn_plan.direction = -1
+                self.turn_plan.direction = 1 
                 if not self.turn_plan.isRunning():
                     self.turn_plan.start()
   
@@ -213,6 +256,7 @@ class DrivingApp( JoyApp ):
 
             elif evt.type == KEYUP and evt.key in [K_a, K_d] : # stop rotating
                 self.rotate_plan.stop()
+                progress("rotating keyup event!")
 
             elif evt.type == KEYUP and evt.key in [K_q, K_e] : # stop turning
                 self.turn_plan.stop()
@@ -220,10 +264,9 @@ class DrivingApp( JoyApp ):
 
         else: # This is auto mode block
             # Auto Mode
-            # self.auto_pan.start()
-            print "in auto mode, press 'm' to switch to manual mode"
-            self.no_end_plan = NoEnd(self)
-            self.no_end_plan.start()
+            if not self.auto_plan.isRunning():
+                self.auto_plan.start()
+            self.auto_plan.push(evt)
 
     def onStop(self):
         for plan in self.plans:
@@ -232,15 +275,13 @@ class DrivingApp( JoyApp ):
         self.move_plan.stop()
         self.rotate_plan.stop()
         self.turn_plan.stop()
-        self.no_end_plan.stop()
+        self.auto_plan.stop()
         if not self.testing:
             for i in range(4):
                 self.robot.off()
         progress("The application have been stopped.")
         return super( DrivingApp, self).onStop()
         
-
-
 ### Sensor Plan 
 class SensorPlan( Plan ):
   def __init__( self, app, peer, *arg, **kw ):
@@ -286,11 +327,13 @@ class SensorPlan( Plan ):
       ts = self.app.now
       dic = json_loads(msg)
       assert type(dic) is dict
-      dic = dic.items()
-      dic.sort()
-      progress("Message received at: " + str(ts))
-      for k,v in dic:
-        progress("   %s : %s" % (k,repr(v)))
+
+      self.app.queue.appendleft(dic) # store in queue
+
+      #progress("Message received at: " + str(ts))
+      #for k,v in dic:
+      #  progress("   %s : %s" % (k,repr(v)))
+
       yield self.forDuration(0.3)
 
 class WaypointSensorApp( JoyApp ):
