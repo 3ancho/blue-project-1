@@ -10,7 +10,6 @@ from collections import deque
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
 # Uncomment above line when using wireless transmitor
 
-
 # TODO: ruoran or xiangyu: change all print into progress
 
 class AutoPlan ( Plan ):
@@ -65,16 +64,23 @@ class AutoPlan ( Plan ):
 
     def behavior(self):
         for i in range(100000000): # while not reaching the goal point
-            queue = self.app.queue
+            print "\n1 ", self.app.sensor.latest
+            #q1 = queue
+            #progress( "start testing  %s" % str(queue[:15]) )
+            self.forDuration(3.5)
+           # queue = self.app.queue
+           # progress( "end   testing  %s" % str(queue[:15]) )
+
+            print "\n2 ", self.app.sensor.latest
 
             # check the sensor 
-            if len(queue) > 0:
-                # If found first waypoint 
-                if not self.next_point and 'w' in queue[0]:
-                    self.cur_point = queue[0]['w'][0]
-                    self.next_point = queue[0]['w'][1]
-                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
-                            (self.cur_point, self.next_point) )
+####            if len(queue) > 0:
+####                # If found first waypoint 
+####                if not self.next_point and 'w' in queue[0]:
+####                    self.cur_point = queue[0]['w'][0]
+####                    self.next_point = queue[0]['w'][1]
+####                    progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
+####                            (self.cur_point, self.next_point) )
 #                if not self.next_point and 'w' in queue[1]:
 #                    self.cur_point = queue[1]['w'][0]
 #                    self.next_point = queue[1]['w'][1]
@@ -91,14 +97,15 @@ class AutoPlan ( Plan ):
 #                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
 #                            (self.cur_point, self.next_point) )
 
-#                    # wait 5 sec to get ave
-#                    self.forDuration(14)
-#                    queue = self.app.queue  # check the latest queue
-#                    sample = queue[:10] # sample the latest 10 points
-#                    # get average of f/b and save them here.
-#                    self.ave_f = average( [v for k, v in sample if v == "f"] )
-#                    self.ave_b = average( [v for k, v in sample if v == "b"] )
-#                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+####                    # wait 5 sec to get ave
+####                    self.forDuration(3.5)
+####                    queue = self.app.queue  # check the latest queue
+####                    print "after waiting for 3.5 sec ", queue[:10]
+####                    sample = queue[:10] # sample the latest 10 points
+####                    # get average of f/b and save them here.
+####                    self.ave_f = average( [v for k, v in sample if k == "f"] )
+####                    self.ave_b = average( [v for k, v in sample if k == "b"] )
+####                    progress("after 3.5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
 
                 # If found new waypoint
 #                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
@@ -112,13 +119,13 @@ class AutoPlan ( Plan ):
 #                    self.forDuration(15)
 #                    queue = self.app.queue  # check the latest queue
 #                    sample = queue[:10] # sample the latest 10 points
-#                    self.ave_f = average( [v for k, v in sample if v == "f"] )
-#                    self.ave_b = average( [v for k, v in sample if v == "b"] )
+#                    self.ave_f = average( [v for k, v in sample if k == "f"] )
+#                    self.ave_b = average( [v for k, v in sample if k == "b"] )
 #                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
 #                    # wait 10 secs to get ave_f / ave_b then execute
 
                 # Running Every time
-                progress( str(queue[0]) )
+####                progress( str(queue[0]) )
 
             # y-ok?
             # if self.should_repose():
@@ -287,7 +294,7 @@ class DrivingApp( JoyApp ):
         self.testing = testing
         self.spec = spec
         self.direction = 1
-        self.queue = deque() 
+        self.queue = [] 
 
     def onStart(self):
         self.output = self.setterOf(self.spec)
@@ -435,6 +442,8 @@ class SensorPlan( Plan ):
     Plan.__init__(self, app, *arg, **kw )
     self.sock = None
     self.peer = peer
+    self.queue = []
+    self.latest = None 
  
   def _connect( self ):
     s = socket(AF_INET, SOCK_STREAM)
@@ -475,10 +484,15 @@ class SensorPlan( Plan ):
       dic = json_loads(msg)
       assert type(dic) is dict
 
-      if len(self.app.queue) > 1024:
-          self.app.queue.pop()
-      self.app.queue.appendleft(dic) # store in queue
+      self.latest = dic
 
+      #if len(self.queue) > 1024:
+      #    self.queue.pop()
+      #self.queue.insert(0, dic) # store in queue
+
+      print ""
+      progress(self.queue)
+      print ""
       #progress("Message received at: " + str(ts))
       #for k,v in dic:
       #  progress("   %s : %s" % (k,repr(v)))
