@@ -23,16 +23,9 @@ class AutoPlan ( Plan ):
         self.ave_b = None
         self.theta = None
 
-        self.good = False
-
     def onStart(self):
-        # rest positions
+        """ rest positions """
         self.plan_step = 0 
-
-    def nextPoint(self):
-        progress("Let's move to next point")
-        self.ave_f = 0
-        self.ave_b = 0
 
     def get_theta(self):
         """ 
@@ -53,8 +46,11 @@ class AutoPlan ( Plan ):
     def should_repose(self):
         """ return True or False """
         flag = False
+        
+        # testing so return false
+        return flag
 
-        self.forDuration(5)
+        self.forDuration(15)
         queue = self.app.queue  # check the latest queue
         sample = queue[:10] # sample the latest 10 points
         ave_f = average( [v for k, v in sample if v == "f"] )
@@ -67,9 +63,8 @@ class AutoPlan ( Plan ):
 
         return flag
 
-
     def behavior(self):
-        for i in range(10000000): # while not reaching the goal point
+        for i in range(100000000): # while not reaching the goal point
             queue = self.app.queue
 
             # check the sensor 
@@ -80,55 +75,81 @@ class AutoPlan ( Plan ):
                     self.next_point = queue[0]['w'][1]
                     progress("Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
+#                if not self.next_point and 'w' in queue[1]:
+#                    self.cur_point = queue[1]['w'][0]
+#                    self.next_point = queue[1]['w'][1]
+#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
+#                            (self.cur_point, self.next_point) )
+#                if not self.next_point and 'w' in queue[2]:
+#                    self.cur_point = queue[2]['w'][0]
+#                    self.next_point = queue[2]['w'][1]
+#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
+#                            (self.cur_point, self.next_point) )
+#                if not self.next_point and 'w' in queue[3]:
+#                    self.cur_point = queue[3]['w'][0]
+#                    self.next_point = queue[3]['w'][1]
+#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
+#                            (self.cur_point, self.next_point) )
 
-                    # wait 5 sec to get ave
-                    self.forDuration(5)
-                    queue = self.app.queue  # check the latest queue
-                    sample = queue[:10] # sample the latest 10 points
-                    self.ave_f = average( [v for k, v in sample if v == "f"] )
-                    self.ave_b = average( [v for k, v in sample if v == "b"] )
-                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
-
-                    # get average of f/b and save them here.
-
+#                    # wait 5 sec to get ave
+#                    self.forDuration(14)
+#                    queue = self.app.queue  # check the latest queue
+#                    sample = queue[:10] # sample the latest 10 points
+#                    # get average of f/b and save them here.
+#                    self.ave_f = average( [v for k, v in sample if v == "f"] )
+#                    self.ave_b = average( [v for k, v in sample if v == "b"] )
+#                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
 
                 # If found new waypoint
-                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
-                    progress("Found next way point !!!")
-                    self.cur_point = queue[0]['w'][0]
-                    self.next_point = queue[0]['w'][1]
-                    progress("Setting new waypoints! Cur: %s -- Next: %s" %\
-                            (self.cur_point, self.next_point) )
-
-                    # wait 5 sec to get ave
-                    self.forDuration(5)
-                    queue = self.app.queue  # check the latest queue
-                    sample = queue[:10] # sample the latest 10 points
-                    self.ave_f = average( [v for k, v in sample if v == "f"] )
-                    self.ave_b = average( [v for k, v in sample if v == "b"] )
-                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
-                    # wait 10 secs to get ave_f / ave_b then execute
-
+#                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
+#                    progress("Found next way point !!!")
+#                    self.cur_point = queue[0]['w'][0]
+#                    self.next_point = queue[0]['w'][1]
+#                    progress("Setting new waypoints! Cur: %s -- Next: %s" %\
+#                            (self.cur_point, self.next_point) )
+#
+#                    # wait 5 sec to get ave
+#                    self.forDuration(15)
+#                    queue = self.app.queue  # check the latest queue
+#                    sample = queue[:10] # sample the latest 10 points
+#                    self.ave_f = average( [v for k, v in sample if v == "f"] )
+#                    self.ave_b = average( [v for k, v in sample if v == "b"] )
+#                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+#                    # wait 10 secs to get ave_f / ave_b then execute
 
                 # Running Every time
                 progress( str(queue[0]) )
 
             # y-ok?
-            if self.should_repose():
-                self.app.rotate_plan.start(exe_count = 2)
+            # if self.should_repose():
+            #    self.app.rotate_plan.start(exe_count = 2)
+            #    while self.app.rotate_plan.isRunning():
+            #        self.forDuration(0.01)
+            #        progress("Reposing!")
 
-            # distance ok?
-            elif self.should_turn():
-                self.app.turn_plan.start(exe_count = 2)
+            ## distance ok?
+            #elif self.should_turn():
+            #    self.app.turn_plan.start(exe_count = 2)
+            #    while self.app.turn_plan.isRunning():
+            #        self.forDuration(0.05)
+            #        progress("Get close to line: Turning!")
 
-            # move!
-            else:
-                self.app.move_plan.start(exe_count = 2)
+            #    self.app.move_plan.start(exe_count = 2)
+            #    while self.app.move_plan.isRunning():
+            #        self.forDuration(0.05)
+            #        progress("Get close to line: Moving!")
+
+            ## move!
+            #else:
+            #    self.app.move_plan.start(exe_count = 2)
+            #    while self.app.move_plan.isRunning():
+            #        self.forDuration(0.05)
+            #        progress("Moving!")
 
 
             progress("Auto mode step -- %d" % self.plan_step)
             self.plan_step += 1
-            yield self.forDuration(0.3)
+            yield self.forDuration(0.4)
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
@@ -180,7 +201,6 @@ class Move( Plan ):
             direction = 1 or -1, when 1 moving forward
         speed:
             set_torque value,  from -1 to 1
-
     """
 
     def __init__(self, app, direction=1, speed=0.2, *arg, **kw):
@@ -191,8 +211,17 @@ class Move( Plan ):
     def change_direction(self):
         self.app.direction = -1 if self.app.direction == 1 else 1
 
+    def start(self, exe_time = 10000):
+        self.exe_time = exe_time 
+        progress("started move plan with count = %d" % self.exe_time)
+        Plan.start(self)
+
     def behavior(self):
-        while True:
+        for count in range(self.exe_time):
+            progress("count %d" % count)
+            if count >= self.exe_time -1:
+                progress("Count reached, Stop!")
+                self.stop()
             if self.app.testing:
                 print "Move -- Direction %s, torque %s" % (self.direction, self.speed) 
             else:
@@ -218,8 +247,17 @@ class Turn( Plan ):
         self.direction = self.app.direction * -1
         self.speed = speed
 
+    def start(self, exe_time = 10000):
+        self.exe_time = exe_time 
+        progress("started rotating plan with count = %d" % self.exe_time)
+        Plan.start(self)
+
     def behavior(self):
-        while True:
+        for count in range(self.exe_time):
+            progress("count %d" % count)
+            if count >= self.exe_time -1:
+                progress("Count reached, Stop!")
+                self.stop()
             if self.app.testing:
                 print "Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) 
             else:
@@ -374,7 +412,8 @@ class DrivingApp( JoyApp ):
             # Auto Mode
             if not self.auto_plan.isRunning():
                 self.auto_plan.start()
-            self.auto_plan.push(evt)
+            else:
+                self.auto_plan.push(evt)
 
     def onStop(self):
         for plan in self.plans:
@@ -436,6 +475,8 @@ class SensorPlan( Plan ):
       dic = json_loads(msg)
       assert type(dic) is dict
 
+      if len(self.app.queue) > 1024:
+          self.app.queue.pop()
       self.app.queue.appendleft(dic) # store in queue
 
       #progress("Message received at: " + str(ts))
@@ -443,21 +484,6 @@ class SensorPlan( Plan ):
       #  progress("   %s : %s" % (k,repr(v)))
 
       yield self.forDuration(0.3)
-
-class WaypointSensorApp( JoyApp ):
-  def onStart( self ):
-    # Set up the sensor receiver plan
-    self.sensor = SensorPlan(self,("67.194.202.70",8080))
-    self.sensor.start()
-    
-  def onEvent( self, evt ):
-    # Punt to superclass
-    # this is here to remind you to override it
-    return super( WaypointSensorApp, self ).onEvent(evt)
-  
-  def onStop( self ):
-    self.sensor.stop()
-    return super( WaypointSensorApp, self ).onStop()
 
 def main():
 
