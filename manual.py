@@ -64,68 +64,54 @@ class AutoPlan ( Plan ):
 
     def behavior(self):
         for i in range(100000000): # while not reaching the goal point
+
             print "\n1 ", self.app.sensor.latest
             #q1 = queue
             #progress( "start testing  %s" % str(queue[:15]) )
-            self.forDuration(3.5)
+            yield self.forDuration(3.5)
            # queue = self.app.queue
            # progress( "end   testing  %s" % str(queue[:15]) )
 
             print "\n2 ", self.app.sensor.latest
 
             # check the sensor 
-####            if len(queue) > 0:
-####                # If found first waypoint 
-####                if not self.next_point and 'w' in queue[0]:
-####                    self.cur_point = queue[0]['w'][0]
-####                    self.next_point = queue[0]['w'][1]
-####                    progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
-####                            (self.cur_point, self.next_point) )
-#                if not self.next_point and 'w' in queue[1]:
-#                    self.cur_point = queue[1]['w'][0]
-#                    self.next_point = queue[1]['w'][1]
-#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
-#                            (self.cur_point, self.next_point) )
-#                if not self.next_point and 'w' in queue[2]:
-#                    self.cur_point = queue[2]['w'][0]
-#                    self.next_point = queue[2]['w'][1]
-#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
-#                            (self.cur_point, self.next_point) )
-#                if not self.next_point and 'w' in queue[3]:
-#                    self.cur_point = queue[3]['w'][0]
-#                    self.next_point = queue[3]['w'][1]
-#                    progress("Initializing waypoints! Cur: %s -- Next: %s" %\
-#                            (self.cur_point, self.next_point) )
+            if len(queue) > 0:
+                # If found first waypoint 
+                if not self.next_point and 'w' in queue[0]:
+                    self.cur_point = queue[0]['w'][0]
+                    self.next_point = queue[0]['w'][1]
+                    progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
+                            (self.cur_point, self.next_point) )
 
-####                    # wait 5 sec to get ave
-####                    self.forDuration(3.5)
-####                    queue = self.app.queue  # check the latest queue
-####                    print "after waiting for 3.5 sec ", queue[:10]
-####                    sample = queue[:10] # sample the latest 10 points
-####                    # get average of f/b and save them here.
-####                    self.ave_f = average( [v for k, v in sample if k == "f"] )
-####                    self.ave_b = average( [v for k, v in sample if k == "b"] )
-####                    progress("after 3.5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+                    # wait 5 sec to get ave
+                    self.forDuration(3.5)
+                    queue = self.app.queue  # check the latest queue
+                    print "after waiting for 3.5 sec ", queue[:10]
+                    sample = queue[:10] # sample the latest 10 points
+                    # get average of f/b and save them here.
+                    self.ave_f = average( [v for k, v in sample if k == "f"] )
+                    self.ave_b = average( [v for k, v in sample if k == "b"] )
+                    progress("after 3.5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
 
-                # If found new waypoint
-#                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
-#                    progress("Found next way point !!!")
-#                    self.cur_point = queue[0]['w'][0]
-#                    self.next_point = queue[0]['w'][1]
-#                    progress("Setting new waypoints! Cur: %s -- Next: %s" %\
-#                            (self.cur_point, self.next_point) )
-#
-#                    # wait 5 sec to get ave
-#                    self.forDuration(15)
-#                    queue = self.app.queue  # check the latest queue
-#                    sample = queue[:10] # sample the latest 10 points
-#                    self.ave_f = average( [v for k, v in sample if k == "f"] )
-#                    self.ave_b = average( [v for k, v in sample if k == "b"] )
-#                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
-#                    # wait 10 secs to get ave_f / ave_b then execute
+               # If found new waypoint
+                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
+                    progress("Found next way point !!!")
+                    self.cur_point = queue[0]['w'][0]
+                    self.next_point = queue[0]['w'][1]
+                    progress("Setting new waypoints! Cur: %s -- Next: %s" %\
+                            (self.cur_point, self.next_point) )
 
-                # Running Every time
-####                progress( str(queue[0]) )
+                    # wait 5 sec to get ave
+                    self.forDuration(15)
+                    queue = self.app.queue  # check the latest queue
+                    sample = queue[:10] # sample the latest 10 points
+                    self.ave_f = average( [v for k, v in sample if k == "f"] )
+                    self.ave_b = average( [v for k, v in sample if k == "b"] )
+                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+                    # wait 10 secs to get ave_f / ave_b then execute
+
+            # Running Every time
+            progress( str(queue[0]) )
 
             # y-ok?
             # if self.should_repose():
