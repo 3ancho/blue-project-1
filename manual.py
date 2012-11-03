@@ -20,6 +20,7 @@ class AutoPlan ( Plan ):
         self.next_point = None
         self.ave_f = None
         self.ave_b = None
+        self.good = False
 
     def onStart(self):
         # rest positions
@@ -29,10 +30,9 @@ class AutoPlan ( Plan ):
         progress("Let's move")
         self.ave_f = 0
         self.ave_b = 0
-        
 
     def behavior(self):
-        while True: # while not reaching the goal point
+        for i in range(10000000): # while not reaching the goal point
             queue = self.app.queue
 
             # check the sensor 
@@ -42,11 +42,15 @@ class AutoPlan ( Plan ):
                     self.next_point = queue[0]['w'][1]
                     progress("Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
-                    
                 print queue[0]
 
-
             # y-ok?
+            if not self.good:
+                if not self.app.rotate_plan.isRunning():
+                    self.app.rotate_plan.direction = -1 
+                    self.app.rotate_plan.start(2)
+                    self.good = True
+            
 
             # distance ok?
 
@@ -64,23 +68,35 @@ class Rotate( Plan ):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = None 
         self.unit = unit
+        self.lock_wheels = False
 
     def onStart(self):
         if not self.app.testing:
             self.app.cur_axis_pos = self.app.robot.at.axis.get_pos()
+
+    def start(self, exe_time = 10000):
+        self.exe_time = exe_time 
+        progress("started rotating plan with count = %d" % self.exe_time)
+        Plan.start(self)
         
     def behavior(self):
-        while True:
+        for count in range(self.exe_time):
+            progress("count %d" % count)
+            if count >= self.exe_time -1:
+                progress("Count reached, Stop!")
+                self.stop()
             #self.app.cur_axis_pos += self.direction * self.unit
             if self.app.testing:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
             else:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
-                for i in range(150):
+                for i in range(100):
                     #print "%.6f" % time.time()
+                    self.forDuration(0.00005)
                     self.app.cur_axis_pos += self.direction * self.unit
                     self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
-            yield self.forDuration(0.00001)
+
+            yield 
 
 class Move( Plan ):
     """ Move is a basic plan that will be called whenever we want to
@@ -89,10 +105,11 @@ class Move( Plan ):
         attr:
             direction = 1 or -1, when 1 moving forward
         speed:
+            set_torque value,  from -1 to 1
 
     """
 
-    def __init__(self, app, direction=1, speed=0.1, *arg, **kw):
+    def __init__(self, app, direction=1, speed=0.2, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = self.app.direction 
         self.speed = speed
@@ -122,7 +139,7 @@ class Turn( Plan ):
         turning the wheels. This need to make sure platform (laser)
         stays put.
     """
-    def __init__(self, app, direction=1, speed=0.1, *arg, **kw):
+    def __init__(self, app, direction=1, speed=0.2, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = self.app.direction * -1
         self.speed = speed
@@ -168,9 +185,9 @@ class DrivingApp( JoyApp ):
         self.unit_turn = 200
         
         # Plan initialization
-        self.move_plan = Move(self)
-        self.turn_plan = Turn(self)
-        self.rotate_plan = Rotate(self)
+        self.move_plan = Move(self, direction=1)
+        self.turn_plan = Turn(self, direction=1)
+        self.rotate_plan = Rotate(self, direction=1)
         self.auto_plan = AutoPlan(self)
         self.sensor = SensorPlan(self,("67.194.202.70",8080))
         self.sensor.start()
@@ -191,6 +208,8 @@ class DrivingApp( JoyApp ):
         # * Exit
         if evt.type == KEYDOWN and evt.key == K_n: #up
             self.auto = 1
+            for plan in self.plans:
+                plan.stop()
             print "Entering auto"
     
         if evt.type == KEYDOWN and evt.key == K_m: #up
@@ -216,20 +235,19 @@ class DrivingApp( JoyApp ):
             # Manual Mode
             if evt.type == KEYDOWN and evt.key == K_z: #up
                 progress("Current direction %s, changing direction %s" % (self.direction, self.direction*-1))
-                self.direction = self.direction * -1
+                self.move_plan.change_direction()
 
             if evt.type == KEYDOWN and evt.key == K_w: #up
-                self.move_plan.direction = self.direction 
+                self.move_plan.direction = self.move_plan.direction
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
 
             elif evt.type == KEYDOWN and evt.key == K_s: #down
-                self.move_plan.direction = self.direction * -1 
+                self.move_plan.direction = -1 * self.move_plan.direction
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
   
             elif evt.type == KEYDOWN and evt.key == K_a: # rotate left
-                #progress(str(self.cur_axis_pos))
                 self.rotate_plan.direction = -1 
                 if not self.rotate_plan.isRunning():
                     self.rotate_plan.start()
@@ -239,6 +257,16 @@ class DrivingApp( JoyApp ):
                 if not self.rotate_plan.isRunning():
                     self.rotate_plan.start()
   
+            elif evt.type == KEYDOWN and evt.key == K_LEFT: #lock wheels rotate left
+                self.rotate_plan.direction = -1 
+                if not self.rotate_plan.isRunning():
+                    self.rotate_plan.start()
+  
+            elif evt.type == KEYDOWN and evt.key == K_RIGHT: #lock wheels rotate right
+                self.rotate_plan.direction = 1 
+                if not self.rotate_plan.isRunning():
+                    self.rotate_plan.start()
+
             elif evt.type == KEYDOWN and evt.key == K_q: # Turn
                 self.turn_plan.direction = -1 
                 if not self.turn_plan.isRunning():
@@ -254,7 +282,7 @@ class DrivingApp( JoyApp ):
             elif evt.type == KEYUP and evt.key in [K_w, K_s] : # stop moving
                 self.move_plan.stop()
 
-            elif evt.type == KEYUP and evt.key in [K_a, K_d] : # stop rotating
+            elif evt.type == KEYUP and evt.key in [K_a, K_d, K_LEFT, K_RIGHT] : # stop rotating
                 self.rotate_plan.stop()
                 progress("rotating keyup event!")
 
