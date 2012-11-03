@@ -4,6 +4,7 @@ from socket import socket, AF_INET, SOCK_STREAM, error as SocketError
 from json import loads as json_loads
 import ckbot.logical 
 import time
+import math
 from collections import deque
 
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
@@ -20,6 +21,8 @@ class AutoPlan ( Plan ):
         self.next_point = None
         self.ave_f = None
         self.ave_b = None
+        self.theta = None
+
         self.good = False
 
     def onStart(self):
@@ -27,9 +30,43 @@ class AutoPlan ( Plan ):
         self.plan_step = 0 
 
     def nextPoint(self):
-        progress("Let's move")
+        progress("Let's move to next point")
         self.ave_f = 0
         self.ave_b = 0
+
+    def get_theta(self):
+        """ 
+            This fucntion will use self.cur_point and self.next_point 
+            There is no return value, 
+            app.direction will be overwitten
+            self.theta will be overwitten
+        """
+        self.theta = math.atan(float(self.next_point[1] - self.cur_point[1])\
+                / (self.next_point[0] - self.cur_point[0]) )
+
+        if theta < math.pi:
+            self.app.direction = 1
+        else:
+            self.theta -= math.pi
+            self.app.direction = -1
+
+    def should_repose(self):
+        """ return True or False """
+        flag = False
+
+        self.forDuration(5)
+        queue = self.app.queue  # check the latest queue
+        sample = queue[:10] # sample the latest 10 points
+        ave_f = average( [v for k, v in sample if v == "f"] )
+        ave_b = average( [v for k, v in sample if v == "b"] )
+
+        F = math.sqrt(256.0/(ave_f -1))
+        B = math.sqrt(256.0/(ave_b -1))
+
+        progress(queue[14:34])
+
+        return flag
+
 
     def behavior(self):
         for i in range(10000000): # while not reaching the goal point
@@ -37,32 +74,69 @@ class AutoPlan ( Plan ):
 
             # check the sensor 
             if len(queue) > 0:
+                # If found first waypoint 
                 if not self.next_point and 'w' in queue[0]:
                     self.cur_point = queue[0]['w'][0]
                     self.next_point = queue[0]['w'][1]
                     progress("Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
-                print queue[0]
+
+                    # wait 5 sec to get ave
+                    self.forDuration(5)
+                    queue = self.app.queue  # check the latest queue
+                    sample = queue[:10] # sample the latest 10 points
+                    self.ave_f = average( [v for k, v in sample if v == "f"] )
+                    self.ave_b = average( [v for k, v in sample if v == "b"] )
+                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+
+                    # get average of f/b and save them here.
+
+
+                # If found new waypoint
+                if 'w' in queue[0] and self.cur_point != queue[0]['w'][0]:
+                    progress("Found next way point !!!")
+                    self.cur_point = queue[0]['w'][0]
+                    self.next_point = queue[0]['w'][1]
+                    progress("Setting new waypoints! Cur: %s -- Next: %s" %\
+                            (self.cur_point, self.next_point) )
+
+                    # wait 5 sec to get ave
+                    self.forDuration(5)
+                    queue = self.app.queue  # check the latest queue
+                    sample = queue[:10] # sample the latest 10 points
+                    self.ave_f = average( [v for k, v in sample if v == "f"] )
+                    self.ave_b = average( [v for k, v in sample if v == "b"] )
+                    progress("after 5 secs: ave_f = %f and ave_b = %f" % (ave_f, ave_b))
+                    # wait 10 secs to get ave_f / ave_b then execute
+
+
+                # Running Every time
+                progress( str(queue[0]) )
 
             # y-ok?
-            if not self.good:
-                if not self.app.rotate_plan.isRunning():
-                    self.app.rotate_plan.direction = -1 
-                    self.app.rotate_plan.start(2)
-                    self.good = True
-            
+            if self.should_repose():
+                self.app.rotate_plan.start(exe_count = 2)
 
             # distance ok?
+            elif self.should_turn():
+                self.app.turn_plan.start(exe_count = 2)
 
             # move!
+            else:
+                self.app.move_plan.start(exe_count = 2)
+
+
             progress("Auto mode step -- %d" % self.plan_step)
             self.plan_step += 1
-            yield self.forDuration(1)
+            yield self.forDuration(0.3)
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
         Rorating axis servo is to adjust the platform (laser) 
         pointing direction, this happens when wheels are locked.
+
+        direction = -1    Rotate left
+        direction = 1     Rotate right 
     """
     def __init__(self, app, direction=1, unit=2, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
@@ -115,7 +189,7 @@ class Move( Plan ):
         self.speed = speed
 
     def change_direction(self):
-        self.direction = -1 if self.direction == 1 else 1
+        self.app.direction = -1 if self.app.direction == 1 else 1
 
     def behavior(self):
         while True:
@@ -206,17 +280,6 @@ class DrivingApp( JoyApp ):
         # * Auto mode
         # * Manual mode
         # * Exit
-        if evt.type == KEYDOWN and evt.key == K_n: #up
-            self.auto = 1
-            for plan in self.plans:
-                plan.stop()
-            print "Entering auto"
-    
-        if evt.type == KEYDOWN and evt.key == K_m: #up
-            self.auto = 0
-            for plan in self.plans:
-                plan.stop()
-            print "Entering manual"
 
         # Exit
         if evt.type == KEYDOWN and evt.key in [ K_ESCAPE ]: # Esc 
@@ -225,6 +288,23 @@ class DrivingApp( JoyApp ):
             # Close socket connections
             # stop all motors if not in testing mode
             self.stop()
+
+        if evt.type == KEYDOWN and evt.key == K_n: #
+            self.auto = 1
+            for plan in self.plans:
+                plan.stop()
+            print "Entering auto"
+    
+        if evt.type == KEYDOWN and evt.key == K_m: #up
+            self.auto = 0
+            # when testing, I will manually drive the robot
+            # while using AutoPlan to read the states
+            # To do so, just comment out following two lines
+
+            #for plan in self.plans:
+            #    plan.stop()
+            print "Entering manual"
+
 
         if evt.type == KEYDOWN and evt.key in [ K_p, K_o, K_DELETE ]: # stop
             for i in range(4):
@@ -238,12 +318,12 @@ class DrivingApp( JoyApp ):
                 self.move_plan.change_direction()
 
             if evt.type == KEYDOWN and evt.key == K_w: #up
-                self.move_plan.direction = self.move_plan.direction
+                self.move_plan.direction = self.direction
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
 
             elif evt.type == KEYDOWN and evt.key == K_s: #down
-                self.move_plan.direction = -1 * self.move_plan.direction
+                self.move_plan.direction = -1 * self.direction
                 if not self.move_plan.isRunning():
                     self.move_plan.start()
   
