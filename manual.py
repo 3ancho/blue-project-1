@@ -33,15 +33,26 @@ class AutoPlan ( Plan ):
             app.direction will be overwitten
             self.theta will be overwitten
         """
-        self.theta = math.atan(float(self.next_point[1] - self.cur_point[1])\
+        #self.theta = math.atan(float(self.next_point[1] - self.cur_point[1])\
                 / (self.next_point[0] - self.cur_point[0]) )
+        self.theta = numpy.arctan2(float(self.next_point[1] - self.cur_point[1]), (self.next_point[0] - self.cur_point[0]) )
 
-        if theta < math.pi:
-            self.app.direction = 1
+
+        if theta < 0:
+            theta = theta + math.pi
+            direction = -1
         else:
-            self.theta -= math.pi
-            self.app.direction = -1
+            direction = 1
+            
+        phi = theta - math.pi / 2
 
+
+#        if theta < math.pi:
+#            self.app.direction = 1
+#        else:
+#            self.theta -= math.pi
+#            self.app.direction = -1
+#
     def should_repose(self):
         """ return True or False """
         flag = False
