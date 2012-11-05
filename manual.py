@@ -56,6 +56,7 @@ class AutoPlan ( Plan ):
                     self.next_point = self.app.latest_w[1] 
                     progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
+                    self.app.move_plan.stop()
 
                     phi, direction = get_phi(self.cur_point, self.next_point)
 
@@ -65,7 +66,7 @@ class AutoPlan ( Plan ):
                     
                     # action !!!
                     if not self.app.turn2_plan.isRunning():
-                        yield self.app.turn2_plan.start(goal=phi)
+                        self.app.turn2_plan.start(goal=phi)
 
                 # If found new waypoint
                 #if 'w' in queue[0] and abs(self.cur_point[0] - queue[0]['w'][0]) < 5\
@@ -86,10 +87,10 @@ class AutoPlan ( Plan ):
                     
                     # action !!!
                     if not self.app.turn2_plan.isRunning():
-                        yield self.app.turn2_plan.start(goal=phi)
+                        self.app.turn2_plan.start(goal=phi)
 
                 self.wp_list = self.app.latest_w
-                if not self.app.move_plan.isRunning() and self.wp_list:
+                if not self.app.move_plan.isRunning() and self.wp_list and not self.app.turn2_plan.isRunning():
                     self.app.move_plan.direction = self.app.direction
                     self.app.move_plan.start(duration = 1.5)
 
@@ -114,7 +115,7 @@ class AutoPlan ( Plan ):
 
             ## move!
 
-            yield self.forDuration(0.3)
+            yield self.forDuration(0.8) # change to 0.3 if necessary
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
@@ -136,21 +137,22 @@ class Rotate( Plan ):
 
     def start(self, exe_time = 10000):
         self.exe_time = exe_time 
-        progress("started rotating plan with count = %d" % self.exe_time)
+        if exe_time != 10000:
+            progress("Started rotating plan with count = %d" % self.exe_time)
         Plan.start(self)
         
     def behavior(self):
         for count in range(self.exe_time):
-            progress("count %d" % count)
+            #progress("count %d" % count)
             if count >= self.exe_time -1:
-                progress("Count reached, Stop!")
+                #progress("Count reached, Stop!")
                 self.stop()
                 break
             #self.app.cur_axis_pos += self.direction * self.unit
             if self.app.testing:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
             else:
-                progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
+                progress("Unit Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
                 for i in range(50):
                     for i in range(1000):
                         aaaaa = 100 * 100
@@ -180,32 +182,34 @@ class Move( Plan ):
 
     def start(self, exe_time = 10000, duration = None):
         self.duration = duration
-        progress("starting turn plan with duration %s" % duration)
+        if self.duration:
+            progress("starting turn plan with duration %s" % duration)
         self.start_time = self.app.now
         self.exe_time = exe_time 
-        progress("started move plan with count = %d" % self.exe_time)
+        if self.exe_time != 10000:
+            progress("started move plan with count = %d" % self.exe_time)
         Plan.start(self)
 
     def behavior(self):
         for count in range(self.exe_time):
-            progress("count %d" % count)
+            #progress("count %d" % count)
             if count >= self.exe_time -1:
-                progress("Count reached, Stop!")
+                #progress("Count reached, Stop!")
                 self.stop()
                 break
 
             if self.duration:
-                progress(" %s %s %s" % (self.app.now, self.start_time, self.duration))
+                #progress(" %s %s %s" % (self.app.now, self.start_time, self.duration))
                 if self.app.now - self.start_time > self.duration:
-                    progress("stop move because times up")
+                    #progress("stop move because times up")
                     self.stop()
                     break
 
             if self.app.testing:
                 progress("Move -- Direction %s, torque %s" % (self.direction, self.speed) )
             else:
-                progress( "Move -- Direction %s, torque %s" % (self.direction, self.speed) )
-                self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
+                progress( "Unit Move -- Direction %s, torque %s" % (self.direction, self.speed) )
+                self.app.robot.at.axis.set_pos(self.app.robot.at.axis.get_pos())
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * -1 * self.speed)
             yield self.forDuration(0.1)
@@ -229,30 +233,32 @@ class Turn( Plan ):
     def start(self, exe_time = 10000, duration = None):
         self.exe_time = exe_time 
         self.duration = duration
-        progress("starting turn plan with duration %s" % duration)
+        if duration:
+            progress("starting turn plan with duration %s" % duration)
         self.start_time = self.app.now
-        progress("started rotating plan with count = %d" % self.exe_time)
+        if exe_time != 10000:
+            progress("started rotating plan with count = %d" % self.exe_time)
         Plan.start(self)
 
     def behavior(self):
         for count in range(self.exe_time):
-            progress("count %d" % count)
+            #progress("count %d" % count)
             if count >= self.exe_time -1:
-                progress("Count reached, Stop!")
+                #progress("Count reached, Stop!")
                 self.stop()
                 break
 
             if self.duration:
-                progress(" %s %s %s" % (self.app.now, self.start_time, self.duration))
+                #progress(" %s %s %s" % (self.app.now, self.start_time, self.duration))
                 if self.app.now - self.start_time > self.duration:
-                    progress("stop because times up")
+                    #progress("stop because times up")
                     self.stop()
                     break
 
             if self.app.testing:
                 progress("Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) )
             else:
-                progress("Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) )
+                progress("Unit Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) )
                 self.app.robot.at.axis.go_slack()
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * self.speed)
@@ -260,7 +266,7 @@ class Turn( Plan ):
             yield self.forDuration(0.3)
 
     def onStop(self):
-        progress("stopped turning")
+        #progress("stopped turning")
         if not self.app.testing:
             self.app.robot.at.left.set_torque(0)
             self.app.robot.at.right.set_torque(0)
@@ -560,8 +566,8 @@ class SensorPlan( Plan ):
       if 'w' in dic:
           self.app.latest_w = dic['w']
 
-      progress("Message received at: " + str(ts))
-      progress("   %s " % dic)
+      #progress("Message received at: " + str(ts))
+      #progress("   %s " % dic)
 
       yield self.forDuration(0.4)
 
