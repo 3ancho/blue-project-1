@@ -14,7 +14,7 @@ from numpy import arctan2
 
 # TODO: ruoran or xiangyu: change all print into progress
 
-def get_phi3(cur_point, next_point):
+def get_phi(cur_point, next_point):
     from numpy import arctan2
     theta = arctan2(float(next_point[1] - cur_point[1]), (next_point[0] - cur_point[0]) )
 
@@ -47,70 +47,11 @@ class AutoPlan ( Plan ):
         """ rest positions """
         self.plan_step = 0 
 
-    def get_phi2(self, cur_point, next_point):
-        """ 
-            This fucntion will use self.cur_point and self.next_point 
-            There is no return value, 
-            app.direction will be overwitten
-            self.theta will be overwitten
-        """
-        theta = numpy.arctan2(float(next_point[1] - cur_point[1]), (next_point[0] - cur_point[0]) )
-
-        direction = None
-
-        if theta < 0:
-            theta = theta + math.pi
-            direction = -1
-        else:
-            direction = 1
-            
-        phi = theta - math.pi / 2
-
-        return phi, direction
-
-    def get_phi(self):
-        """ 
-            This fucntion will use self.cur_point and self.next_point 
-            There is no return value, 
-            app.direction will be overwitten
-            self.theta will be overwitten
-        """
-        self.theta = numpy.arctan2(float(self.next_point[1] - self.cur_point[1]), (self.next_point[0] - self.cur_point[0]) )
-
-        direction = None
-
-        if self.theta < 0:
-            self.theta = self.theta + math.pi
-            direction = -1
-        else:
-            direction = 1
-            
-        phi = self.theta - math.pi / 2
-
-        return phi, direction
-
-    def should_repose(self):
-        """ return True or False """
-        flag = False
-        
-        self.forDuration(3)
-        queue = self.app.queue  # check the latest queue
-        sample = queue[:10] # sample the latest 10 points
-        ave_f = average( [v for k, v in sample if v == "f"] )
-        ave_b = average( [v for k, v in sample if v == "b"] )
-
-        F = math.sqrt(256.0/(ave_f -1))
-        B = math.sqrt(256.0/(ave_b -1))
-
-        progress(queue[10:34])
-        # check f,b on which side
-
-        return flag
-
     def behavior(self):
         for i in range(100000000): # while not reaching the goal point
             progress("Auto mode step -- %d" % self.plan_step)
             self.plan_step += 1
+            queue = self.app.queue
 
             if len(queue) > 0:
                 # If found first waypoint 
@@ -121,16 +62,20 @@ class AutoPlan ( Plan ):
                     progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
 
-                    phi, direction = self.get_phi3(self.app.cur_point, self.app.next_point)
+                    phi, direction = get_phi(self.cur_point, self.next_point)
 
                     progress("phi =%s   and   direction=%s" % (phi, direction))
 
+                    self.app.direction = direction
+                    
                     # action !!!
+                    self.app.turn2_plan.start(goal=phi)
 
                 # If found new waypoint
                 #if 'w' in queue[0] and abs(self.cur_point[0] - queue[0]['w'][0]) < 5\
                 #        and abs(self.cur_point[1] - queue[0]['w'][1]) < 5:
                 if 'w' in queue[0] and len(queue[0]['w']) != len(self.wp_list):
+                    self.app.move_plan.stop()
                     progress("Found next way point !!!")
                     self.cur_point = queue[0]['w'][0]
                     self.next_point = queue[0]['w'][1]
@@ -139,11 +84,13 @@ class AutoPlan ( Plan ):
                     progress("Setting new waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
 
-                    phi, direction = self.get_phi()
+                    phi, direction = get_phi(self.cur_point, self.next_point)
 
                     progress("phi =%s   and   direction=%s" % (phi, direction))
-
+                    
                     # action !!!
+                    self.app.turn2_plan.start(goal=phi)
+
 
 
             # y-ok?
@@ -166,10 +113,11 @@ class AutoPlan ( Plan ):
             #        progress("Get close to line: Moving!")
 
             ## move!
-            self.app.move_plan.direction = self.app.direction
-            self.app.move_plan.start(duration = 3)
+            if not self.app.move_plan.isRunning():
+                self.app.move_plan.direction = self.app.direction
+                self.app.move_plan.start(duration = 1.5)
 
-            yield self.forDuration(0.4)
+            yield self.forDuration(0.3)
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
@@ -179,7 +127,7 @@ class Rotate( Plan ):
         direction = -1    Rotate left
         direction = 1     Rotate right 
     """
-    def __init__(self, app, direction=1, unit=1, *arg, **kw):
+    def __init__(self, app, direction=1, unit=2, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = None 
         self.unit = unit
@@ -206,8 +154,9 @@ class Rotate( Plan ):
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
             else:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
-                for i in range(100):
-                    self.forDuration(0.0005)
+                for i in range(50):
+                    for i in range(1000):
+                        aaaaa = 100 * 100
                     self.app.cur_axis_pos += self.direction * self.unit
                     self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
 
@@ -320,11 +269,52 @@ class Turn( Plan ):
             self.app.robot.at.right.set_torque(0)
         Plan.onStop(self)
 
+class Turn2( Plan ):
+    def __init__(self, app, *arg, **kw):
+        Plan.__init__(self, app, *arg, **kw)
+
+    def start(self, goal = None):
+        self.goal_pos = goal
+        self.start_pos = self.app.robot.at.axis.get_pos() 
+        Plan.start(self)
+
+    def behavior(self):
+        while True:
+            if self.start_pos < self.goal_pos:
+                self.app.rotate_plan.direction = 1
+                self.app.turn_plan.direction = -1
+                self.app.rotate_plan.start()
+                self.app.turn_plan.start()
+                while self.app.robot.at.axis.get_pos() < self.goal_pos:
+                    progress("turning left")
+                    yield self.forDuration(0.1)
+                self.app.rotate_plan.stop()
+                self.app.turn_plan.stop()
+                self.stop()
+                break
+
+            else: #start_pos > goal_pos
+                self.app.rotate_plan.direction = -1
+                self.app.turn_plan.direction = 1
+                self.app.rotate_plan.start()
+                self.app.turn_plan.start()
+                while self.app.robot.at.axis.get_pos() > self.goal_pos:
+                    progress("turning right")
+                    yield self.forDuration(0.1)
+                self.app.rotate_plan.stop()
+                self.app.turn_plan.stop()
+                self.stop()
+                break
+
+    def onStop(self):
+        if not self.app.testing:
+            self.app.turn_plan.stop()
+            self.app.rotate_plan.stop()
     
 
 class DrivingApp( JoyApp ):
     """ unit_speed is for the two wheels """
-    def __init__(self,spec,unit_speed = 0.2, testing=False,*arg,**kw):
+    def __init__(self,spec,unit_speed = 0.2, testing=False, no_sensor=False,*arg,**kw):
         if testing:
             JoyApp.__init__(self, *arg,**kw)
         else:
@@ -335,6 +325,7 @@ class DrivingApp( JoyApp ):
         self.spec = spec
         self.direction = 1
         self.queue = [] 
+        self.no_sensor = no_sensor
 
     def onStart(self):
         self.output = self.setterOf(self.spec)
@@ -348,8 +339,11 @@ class DrivingApp( JoyApp ):
         self.turn_plan = Turn(self, direction=1)
         self.rotate_plan = Rotate(self, direction=1)
         self.auto_plan = AutoPlan(self)
-        #self.sensor = SensorPlan(self,("67.194.202.70",8080))
-        #self.sensor.start()
+        self.turn2_plan = Turn2(self)
+
+        if not self.no_sensor:
+            self.sensor = SensorPlan(self,("67.194.202.70",8080))
+            self.sensor.start()
 
         # Set the module mode
         if not self.testing:
@@ -397,70 +391,29 @@ class DrivingApp( JoyApp ):
         # Detail of Audo mode and Manual Mode
         if not self.auto:
             # Manual Mode
-            if evt.type == KEYDOWN and evt.key ==  K_u: 
-                progress("pressed K_u")
-                if not self.turn_plan.isRunning():
-                    self.turn_plan.start(duration = 2)
 
-            if evt.type == KEYDOWN and evt.key ==  K_i: 
-                progress("pressed K_u")
-                if not self.turn_plan.isRunning():
-                    self.move_plan.start(duration = 2)
 
-            if evt.type == KEYDOWN and evt.key ==  K_o: 
-                progress("%s" % self.robot.at.axis.get_pos())
-                progress("pressed K_u")
+            if evt.type == KEYDOWN and evt.key ==  K_u:  # Turn left
+                self.turn2_plan.start(goal=-4500)
+
+            if evt.type == KEYDOWN and evt.key ==  K_o:  # Turn left
+                progress("start axis pos %s" % self.robot.at.axis.get_pos())
+                progress("pressed K_o")
                 self.rotate_plan.direction = 1
                 self.turn_plan.direction = -1
-                self.turn_plan.start(duration = 0.4)
-                self.rotate_plan.start(exe_time = 8)
+                self.turn_plan.start(duration = 1.6)
+                self.rotate_plan.start(exe_time = 18)
 
-            if evt.type == KEYDOWN and evt.key ==  K_p: 
-                progress("%s" % self.robot.at.axis.get_pos())
+            if evt.type == KEYDOWN and evt.key ==  K_i:  # Turn right 
+                progress("start axis pos %s" % self.robot.at.axis.get_pos())
+                progress("pressed K_i")
+                self.rotate_plan.direction = -1
+                self.turn_plan.direction = 1
+                self.turn_plan.start(duration = 1.6)
+                self.rotate_plan.start(exe_time = 18)
 
-#                self.robot.at.left.set_mode(0)
-#                self.robot.at.right.set_mode(0)
-#
-#                axis = self.robot.at.axis.get_pos()
-#                left = self.robot.at.left.get_pos()
-#                right = self.robot.at.right.get_pos()
-#                progress("Init Pos of left %s" % str(left))
-#                progress("Init Pos of right %s" % str(right))
-#
-#
-#                axis = axis + 100
-#                progress(str(axis))
-#                left = left - 190
-#                progress(str(left))
-#                right = right - 190
-#                progress(str(right))
-#                self.robot.at.axis.set_pos(axis)
-#                self.robot.at.left.set_pos(left)
-#                self.robot.at.right.set_pos(right)
-#
-#                self.robot.at.left.set_mode(1)
-#                self.robot.at.right.set_mode(1)
-                    
-            # Testing new function
-            if evt.type == KEYDOWN and evt.key ==  K_y : 
-                self.turn_plan.direction = -1 
-                if not self.turn_plan.isRunning():
-                    self.turn_plan.start()
-
-                self.rotate_plan.direction = 1 
-                if not self.rotate_plan.isRunning():
-                    self.rotate_plan.start()
-
-#
-#                else:  # > 4500 
-#                    self.turn_plan.direction = 1  # turn right
-#                    self.turn_plan.start()
-#                    while self.robot.at.axis.get_pos() > 4500:
-#                        progress("turning right")
-#                        yield forDuration(0.1)
-#                       
-#                    self.turn_plan.stop()
-#
+            if evt.type == KEYDOWN and evt.key ==  K_l: 
+                progress("End %s" % self.robot.at.axis.get_pos())
 
             if evt.type == KEYDOWN and evt.key == K_z: #up
                 progress("Current direction %s, changing direction %s" % (self.direction, self.direction*-1))
@@ -530,7 +483,7 @@ class DrivingApp( JoyApp ):
             # Auto Mode
             if not self.auto_plan.isRunning():
                 self.auto_plan.start()
-                self.tag_turn.start()
+                #self.tag_turn.start()
             else:
                 self.auto_plan.push(evt)
 
@@ -554,7 +507,7 @@ class SensorPlan( Plan ):
     Plan.__init__(self, app, *arg, **kw )
     self.sock = None
     self.peer = peer
-    self.queue = []
+    self.app.queue = []
     self.latest = None 
  
   def _connect( self ):
@@ -596,17 +549,14 @@ class SensorPlan( Plan ):
       dic = json_loads(msg)
       assert type(dic) is dict
 
-      self.latest = dic
-
       if len(self.app.queue) > 1024:
           self.app.queue.pop()
       self.app.queue.insert(0, dic) # store in queue
 
       progress("Message received at: " + str(ts))
-      #for k,v in dic:
-      #    progress("   %s : %s" % (k,repr(v)))
+      progress("   %s " % dic)
 
-      yield self.forDuration(0.3)
+      yield self.forDuration(0.4)
 
 def main():
 
@@ -615,10 +565,15 @@ def main():
 
     if len(sys.argv) > 1 and sys.argv[1] == "-t":
         flag = True
+        
+    elif len(sys.argv) > 1 and sys.argv[1] == "-n":
+        no_sensor = True
+        flag = False
     else:
         flag = False
+        no_sensor = False
         
-    app = DrivingApp("#output ", testing=flag)
+    app = DrivingApp("#output ", testing=flag, no_sensor=no_sensor)
     app.run()
 
 if __name__ == '__main__':
