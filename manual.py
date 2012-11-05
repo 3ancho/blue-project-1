@@ -17,9 +17,7 @@ from numpy import arctan2
 def get_phi(cur_point, next_point):
     from numpy import arctan2
     theta = arctan2(float(next_point[1] - cur_point[1]), (next_point[0] - cur_point[0]) )
-
     direction = None
-
     if theta < 0:
         theta = theta + math.pi
         direction = -1
@@ -27,9 +25,7 @@ def get_phi(cur_point, next_point):
         direction = 1
         
     phi = theta - math.pi / 2
-
     pos = phi * 180/math.pi * 100
-
     return pos, direction
 
 class AutoPlan ( Plan ):
@@ -38,7 +34,7 @@ class AutoPlan ( Plan ):
         self.plan_step = None
         self.cur_point = None
         self.next_point = None
-        self.wp_list = None
+        self.wp_list = []              # dic['w']
         self.ave_f = None
         self.ave_b = None
         self.theta = None
@@ -55,10 +51,9 @@ class AutoPlan ( Plan ):
 
             if len(queue) > 0:
                 # If found first waypoint 
-                if not self.next_point and 'w' in queue[0]:
-                    self.cur_point = queue[0]['w'][0]   
-                    self.next_point = queue[0]['w'][1] 
-                    self.wp_list = queue[0]['w']
+                if not self.next_point and self.app.latest_w:
+                    self.cur_point = self.app.latest_w[0]   
+                    self.next_point = self.app.latest_w[1] 
                     progress(" queue[0] Initializing waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
 
@@ -69,17 +64,18 @@ class AutoPlan ( Plan ):
                     self.app.direction = direction
                     
                     # action !!!
-                    self.app.turn2_plan.start(goal=phi)
+                    if not self.app.turn2_plan.isRunning():
+                        yield self.app.turn2_plan.start(goal=phi)
 
                 # If found new waypoint
                 #if 'w' in queue[0] and abs(self.cur_point[0] - queue[0]['w'][0]) < 5\
                 #        and abs(self.cur_point[1] - queue[0]['w'][1]) < 5:
-                if 'w' in queue[0] and len(queue[0]['w']) != len(self.wp_list):
-                    self.app.move_plan.stop()
+                if len(self.app.latest_w) != len(self.wp_list):
                     progress("Found next way point !!!")
-                    self.cur_point = queue[0]['w'][0]
-                    self.next_point = queue[0]['w'][1]
-                    self.wp_list = queue[0]['w']
+                    self.app.move_plan.stop()
+
+                    self.cur_point = self.app.latest_w[0]   
+                    self.next_point = self.app.latest_w[1] 
 
                     progress("Setting new waypoints! Cur: %s -- Next: %s" %\
                             (self.cur_point, self.next_point) )
@@ -89,9 +85,13 @@ class AutoPlan ( Plan ):
                     progress("phi =%s   and   direction=%s" % (phi, direction))
                     
                     # action !!!
-                    self.app.turn2_plan.start(goal=phi)
+                    if not self.app.turn2_plan.isRunning():
+                        yield self.app.turn2_plan.start(goal=phi)
 
-
+                self.wp_list = self.app.latest_w
+                if not self.app.move_plan.isRunning() and self.wp_list:
+                    self.app.move_plan.direction = self.app.direction
+                    self.app.move_plan.start(duration = 1.5)
 
             # y-ok?
             # if self.should_repose():
@@ -113,9 +113,6 @@ class AutoPlan ( Plan ):
             #        progress("Get close to line: Moving!")
 
             ## move!
-            if not self.app.move_plan.isRunning():
-                self.app.move_plan.direction = self.app.direction
-                self.app.move_plan.start(duration = 1.5)
 
             yield self.forDuration(0.3)
 
@@ -272,21 +269,27 @@ class Turn( Plan ):
 class Turn2( Plan ):
     def __init__(self, app, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
+        self.goal_pos = None 
 
     def start(self, goal = None):
         self.goal_pos = goal
         self.start_pos = self.app.robot.at.axis.get_pos() 
+        self.app.move_plan.stop()
+        self.app.rotate_plan.stop()
+        self.app.turn_plan.stop()
         Plan.start(self)
 
     def behavior(self):
         while True:
+            self.app.move_plan.stop()
             if self.start_pos < self.goal_pos:
                 self.app.rotate_plan.direction = 1
                 self.app.turn_plan.direction = -1
                 self.app.rotate_plan.start()
                 self.app.turn_plan.start()
                 while self.app.robot.at.axis.get_pos() < self.goal_pos:
-                    progress("turning left")
+                    pass
+                    #progress("turning left")
                     yield self.forDuration(0.1)
                 self.app.rotate_plan.stop()
                 self.app.turn_plan.stop()
@@ -299,7 +302,8 @@ class Turn2( Plan ):
                 self.app.rotate_plan.start()
                 self.app.turn_plan.start()
                 while self.app.robot.at.axis.get_pos() > self.goal_pos:
-                    progress("turning right")
+                    pass 
+                    #progress("turning right")
                     yield self.forDuration(0.1)
                 self.app.rotate_plan.stop()
                 self.app.turn_plan.stop()
@@ -326,6 +330,7 @@ class DrivingApp( JoyApp ):
         self.direction = 1
         self.queue = [] 
         self.no_sensor = no_sensor
+        self.latest_w = None 
 
     def onStart(self):
         self.output = self.setterOf(self.spec)
@@ -552,6 +557,8 @@ class SensorPlan( Plan ):
       if len(self.app.queue) > 1024:
           self.app.queue.pop()
       self.app.queue.insert(0, dic) # store in queue
+      if 'w' in dic:
+          self.app.latest_w = dic['w']
 
       progress("Message received at: " + str(ts))
       progress("   %s " % dic)
