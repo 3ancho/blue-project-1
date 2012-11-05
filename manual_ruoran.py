@@ -6,7 +6,7 @@ import ckbot.logical
 import time
 import math
 from collections import deque
-from numpy import arctan2
+from numpy import arctan2, mean
 
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
 
@@ -35,6 +35,7 @@ class AutoPlan ( Plan ):
         self.ave_f = None
         self.ave_b = None
         self.theta = None
+        self.nwp = False
 
         # Those two are initialized in DrivingApp onstart
         self.move_plan = Move(self.app, direction=1)
@@ -54,6 +55,8 @@ class AutoPlan ( Plan ):
                 # action !!!
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
+                #self.ave_f = mean([item['f'] for item in queue[:10]])
+                #self.ave_b = mean([item['b'] for item in queue[:10]])
 
             if len(self.app.latest_w) != len(self.wp_list):
                 self.cur_point = self.app.latest_w[0]   
@@ -68,12 +71,16 @@ class AutoPlan ( Plan ):
                 self.move_plan.stop(force=True)
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
+                #self.nwp = True
 
             if not self.move_plan.isRunning() and len(self.wp_list)>1 and not self.turn2_plan.isRunning():
-                #if self.app.queue[0]['f'] in [0,1] and self.app.queue[0]['f'] in [0,1]:
+                #if not self.nwp and self.app.queue[0]['f'] in [0,1] and self.app.queue[0]['f'] in [0,1]:
                 #    self.move_plan.direction = self.app.direction * -1
+                #    # 90 go and 
+                #    
                 #else:
                 self.move_plan.direction = self.app.direction
+                #    self.nwp = False
                 self.move_plan.start(duration = 1)
 
 
@@ -87,7 +94,7 @@ class Rotate( Plan ):
         direction = -1    Rotate left
         direction = 1     Rotate right 
     """
-    def __init__(self, app, direction=1, unit=5, *arg, **kw):
+    def __init__(self, app, direction=1, unit=10, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = None 
         self.unit = unit
@@ -114,9 +121,9 @@ class Rotate( Plan ):
             if self.app.testing:
                 progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
             else:
-       #         progress("Unit Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
                 for i in range(20):
-                    
+                    for i in range(10000):
+                        aaa = 13123/ 123123
                     self.app.cur_axis_pos += self.direction * self.unit
                     self.app.robot.at.axis.set_pos(self.app.cur_axis_pos)
 
@@ -189,7 +196,7 @@ class Turn( Plan ):
         turning the wheels. This need to make sure platform (laser)
         stays put.
     """
-    def __init__(self, app, direction=1, speed=0.1, *arg, **kw):
+    def __init__(self, app, direction=1, speed=0.105, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = self.app.direction * -1
         self.speed = speed
@@ -252,29 +259,39 @@ class Turn2( Plan ):
     def behavior(self):
         while True:
             if self.start_pos < self.goal_pos:
-                self.rotate_plan.direction = 1
+                #self.rotate_plan.direction = 1
                 self.turn_plan.direction = -1
-                self.rotate_plan.start()
+                #self.rotate_plan.start()
                 self.turn_plan.start()
+                self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() < self.goal_pos:
                     pass
-                    #progress("turning left")
+                    progress("turning left")
+                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
+                        self.turn_plan.stop()
+                        self.stop()
+                        break
                     yield self.forDuration(0.1)
-                self.rotate_plan.stop()
+                #self.rotate_plan.stop()
                 self.turn_plan.stop()
                 self.stop()
                 break
 
             else: #start_pos > goal_pos
-                self.rotate_plan.direction = -1
+                #self.rotate_plan.direction = -1
                 self.turn_plan.direction = 1
-                self.rotate_plan.start()
+                #self.rotate_plan.start()
                 self.turn_plan.start()
+                self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() > self.goal_pos:
                     pass 
-                    #progress("turning right")
+                    progress("turning right")
+                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
+                        self.turn_plan.stop()
+                        self.stop()
+                        break
                     yield self.forDuration(0.1)
-                self.rotate_plan.stop()
+                #self.rotate_plan.stop()
                 self.turn_plan.stop()
                 self.stop()
                 break
