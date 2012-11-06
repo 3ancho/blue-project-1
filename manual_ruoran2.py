@@ -8,8 +8,7 @@ import math
 from collections import deque
 from numpy import arctan2, mean
 
-
-ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
+#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
 
 # Uncomment above line when using wireless transmitor
 
@@ -37,7 +36,7 @@ class AutoPlan ( Plan ):
         self.ave_b = None
         self.theta = None
         self.nwp = False
-
+        self.count = 0
         # Those two are initialized in DrivingApp onstart
         self.move_plan = Move(self.app, direction=1)
         self.turn2_plan = Turn2(self.app)
@@ -53,6 +52,7 @@ class AutoPlan ( Plan ):
                         (self.cur_point, self.next_point) )
                 phi, direction = get_phi(self.cur_point, self.next_point) 
                 self.app.direction = direction 
+                self.phi = phi
                 # action !!!
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
@@ -67,23 +67,53 @@ class AutoPlan ( Plan ):
                         (self.cur_point, self.next_point) )
 
                 phi, direction = get_phi(self.cur_point, self.next_point)
-                self.app.direction = direction                
+                self.app.direction = direction     
+                self.phi = phi           
                 # action !!!
                 self.move_plan.stop(force=True)
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
-                #self.nwp = True
-
+                self.nwp = True
+                self.count = 0
             if not self.move_plan.isRunning() and len(self.wp_list)>1 and not self.turn2_plan.isRunning():
-                #if not self.nwp and self.app.queue[0]['f'] in [0,1] and self.app.queue[0]['f'] in [0,1]:
-                #    self.move_plan.direction = self.app.direction * -1
-                #    # 90 go and 
+                if not self.nwp and self.app.queue[0]['f']<=5 and self.app.queue[0]['b']<=5 and self.count >= 8:
+                    print "Calibrating!"
+                    self.app.direction = -1*self.app.direction
+                    self.move_plan.direction = self.app.direction
+                    while self.app.queue[0]['f']<=20 and self.app.queue[0]['b']<=20:
+                        yield self.forDuration(1)
+                        if self.app.queue[0]['f']<=20 and self.app.queue[0]['b']<=20:
+                            self.move_plan.start(duration = 0.7)
+                        print "backward."
+                        yield self.forDuration(1.5) 
+                    self.move_plan.start(duration = 0.5)
+                    yield self.forDuration(1.5)
+                    print "Turn!", self.app.queue[0]['f'], self.app.queue[0]['b']
+                    if self.phi>=0:
+                        self.phi = self.phi - 9000
+                    else:
+                        self.phi = self.phi + 9000
+                    
+                    self.turn2_plan.start(goal=self.phi)
+                    yield self.forDuration(10)
+                    for i in range(10):
+                        print "Foward, Backward!", i
+                        if len(self.app.latest_w) != len(self.wp_list):
+                            print "Got it!"
+                            break
+                        self.move_plan.direction = self.app.direction
+                        self.app.direction = -1*self.app.direction
+                        self.move_plan.start(duration = i+1)
+                        yield self.forDuration(8+i)
+                    self.nwp = True
+                    self.count = 0
+                    # 90 go and 
                 #    
-                #else:
-                self.move_plan.direction = self.app.direction
-                #    self.nwp = False
-                self.move_plan.start(duration = 1)
-
+                else:
+                    self.move_plan.direction = self.app.direction
+                    self.nwp = False
+                    self.move_plan.start(duration = 1)
+                    self.count +=1
 
             yield self.forDuration(0.4) # change to 0.3 if necessary
 
@@ -154,8 +184,8 @@ class Move( Plan ):
 
     def start(self, exe_time = 10000, duration = None):
         self.duration = duration
-        if self.duration:
-            progress("starting turn plan with duration %s" % duration)
+   #     if self.duration:
+   #         progress("starting turn plan with duration %s" % duration)
         self.start_time = self.app.now
         self.exe_time = exe_time 
         if self.exe_time != 10000:
@@ -180,7 +210,7 @@ class Move( Plan ):
             if self.app.testing:
                 progress("Move -- Direction %s, torque %s" % (self.direction, self.speed) )
             else:
-                progress( "Unit Move -- Direction %s, torque %s" % (self.direction, self.speed) )
+      #          progress( "Unit Move -- Direction %s, torque %s" % (self.direction, self.speed) )
                 self.app.robot.at.axis.set_pos(self.app.robot.at.axis.get_pos())
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * -1 * self.speed)
@@ -215,7 +245,6 @@ class Turn( Plan ):
 
     def behavior(self):
         for count in range(self.exe_time):
-            #progress("count %d" % count)
             if count >= self.exe_time -1:
                 #progress("Count reached, Stop!")
                 self.stop()
@@ -231,7 +260,6 @@ class Turn( Plan ):
             if self.app.testing:
                 progress("Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) )
             else:
-                progress("Unit Turn -- left %s, right %s, axis slack" % (self.direction, self.direction) )
             #    self.app.robot.at.axis.go_slack()
                 self.app.robot.at.left.set_torque(self.direction * self.speed)
                 self.app.robot.at.right.set_torque(self.direction * self.speed)
@@ -267,7 +295,7 @@ class Turn2( Plan ):
                 self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() < self.goal_pos:
                     pass
-                    progress("turning left")
+      #              progress("turning left")
                     if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
                         self.turn_plan.stop()
                         self.stop()
@@ -286,7 +314,7 @@ class Turn2( Plan ):
                 self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() > self.goal_pos:
                     pass 
-                    progress("turning right")
+         #           progress("turning right")
                     if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
                         self.turn_plan.stop()
                         self.stop()
@@ -472,15 +500,20 @@ class DrivingApp( JoyApp ):
             self.robot.off()
         progress("The application have been stopped.")
         return super( DrivingApp, self).onStop()
-        
-### Sensor Plan 
+
+
+
 class SensorPlan( Plan ):
+  """
+  SensorPlan is a concrete Plan subclass that uses the self.app's
+  remote plan to read and decode WayPoint Task sensor and waypoint
+  updates.
+  """
   def __init__( self, app, peer, *arg, **kw ):
     Plan.__init__(self, app, *arg, **kw )
     self.sock = None
     self.peer = peer
-    self.app.queue = []
-    self.latest = None 
+    self.lastSensorReading = None
  
   def _connect( self ):
     s = socket(AF_INET, SOCK_STREAM)
@@ -511,18 +544,21 @@ class SensorPlan( Plan ):
         msg = self.sock.recv(1024)
       except SocketError, se:
         # If there was no data on the socket --> not a real error, else
-        if se.errno != 35:
+        if se.errno != 11:
           progress("Connection failed: "+str(se))
           self.sock.close()
           self.sock = None
         yield
         continue
       ts = self.app.now
-      try:
-        dic = json_loads(msg)
-      except ValueError, ve:
-          progress("Parsing Error %s" % repr(msg) + str(ve))
-      assert type(dic) is dict
+      dic = json_loads(msg)
+      self.lastSensorReading = (ts, dic['f'], dic['b'])
+      #assert type(dic) is dict
+      #dic = dic.items()
+      #dic.sort()
+      #progress("Message received at: " + str(ts))
+      #for k,v in dic:
+      #  progress("   %s : %s" % (k,repr(v)))
 
       if len(self.app.queue) > 1024:
           self.app.queue.pop()
@@ -531,10 +567,15 @@ class SensorPlan( Plan ):
       if 'w' in dic:
           self.app.latest_w = dic['w']
 
-      #progress("Message received at: " + str(ts))
-      #progress("   %s " % dic)
+      dic = dic.items()
+      dic.sort()
+      progress("Message received at: " + str(ts))
+      for k,v in dic:
+        progress("   %s : %s" % (k,repr(v)))
 
       yield self.forDuration(0.3)
+
+
 
 def main():
 
