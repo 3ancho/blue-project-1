@@ -11,6 +11,7 @@ from numpy import arctan2, mean
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
 
 # Uncomment above line when using wireless transmitor
+# Important: Axis module's torque_limit need to be set to 50
 
 def get_phi(cur_point, next_point):
     """ return the number for set_pos to use """
@@ -32,12 +33,13 @@ class AutoPlan ( Plan ):
         self.cur_point = None
         self.next_point = None
         self.wp_list = []              # dic['w']
-        self.ave_f = None
-        self.ave_b = None
+        self.standard_f = None
+        self.standard_b = None
         self.theta = None
         self.nwp = False
         self.count = 0
-        # Those two are initialized in DrivingApp onstart
+
+        # Two sub-plans belongs to AutoPlan
         self.move_plan = Move(self.app, direction=1)
         self.turn2_plan = Turn2(self.app)
 
@@ -56,16 +58,15 @@ class AutoPlan ( Plan ):
                 # action !!!
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
-                #self.ave_f = mean([item['f'] for item in queue[:10]])
-                #self.ave_b = mean([item['b'] for item in queue[:10]])
+                #self.standard_f = mean([item['f'] for item in queue[:10]])
+                #self.standard_b = mean([item['b'] for item in queue[:10]])
 
+            # If found next waypoint
             if len(self.app.latest_w) != len(self.wp_list):
                 self.cur_point = self.app.latest_w[0]   
                 self.next_point = self.app.latest_w[1] 
-
                 progress("Setting new waypoints! Cur: %s -- Next: %s" %\
                         (self.cur_point, self.next_point) )
-
                 phi, direction = get_phi(self.cur_point, self.next_point)
                 self.app.direction = direction     
                 self.phi = phi           
@@ -75,21 +76,29 @@ class AutoPlan ( Plan ):
                 self.wp_list = self.app.latest_w
                 self.nwp = True
                 self.count = 0
-            if not self.move_plan.isRunning() and len(self.wp_list)>1 and not self.turn2_plan.isRunning():
-                if not self.nwp and self.app.queue[0]['f']<=5 and self.app.queue[0]['b']<=5 and self.count >= 8:
-                    print "Calibrating!"
-                    self.app.direction = -1*self.app.direction
+                #self.standard_f = mean([item['f'] for item in queue[:10]])
+                #self.standard_b = mean([item['b'] for item in queue[:10]])
+
+            if not self.move_plan.isRunning() and len(self.wp_list)>1\
+                    and not self.turn2_plan.isRunning():
+                if not self.nwp and self.app.queue[0]['f'] <=5 and\
+                        self.app.queue[0]['b'] <=5 and self.count >= 8:
+                    progress( "Calibrating!" ) 
+                    self.app.direction = -1 * self.app.direction
                     self.move_plan.direction = self.app.direction
-                    while self.app.queue[0]['f']<=20 and self.app.queue[0]['b']<=20:
+                    while self.app.queue[0]['f'] <= 20 and self.app.queue[0]['b'] <= 20:
                         yield self.forDuration(1)
-                        if self.app.queue[0]['f']<=20 and self.app.queue[0]['b']<=20:
-                            self.move_plan.start(duration = 0.7)
-                        print "backward."
+                        if self.app.queue[0]['f'] <= 20 and self.app.queue[0]['b'] <= 20:
+                            self.move_plan.start(duration=0.7)
+                        progress("backward.")
                         yield self.forDuration(1.5) 
                     self.move_plan.start(duration = 0.5)
                     yield self.forDuration(1.5)
-                    print "Turn!", self.app.queue[0]['f'], self.app.queue[0]['b']
-                    if self.phi>=0:
+                    progress("Turn! f: %s  b: %s" %\
+                            (self.app.queue[0]['f'], self.app.queue[0]['b']) )
+
+                    # Get close to the line 
+                    if self.phi >= 0:
                         self.phi = self.phi - 9000
                     else:
                         self.phi = self.phi + 9000
@@ -97,23 +106,37 @@ class AutoPlan ( Plan ):
                     self.turn2_plan.start(goal=self.phi)
                     yield self.forDuration(10)
                     for i in range(10):
-                        print "Foward, Backward!", i
+                        progress("Foward, Backward! %s" % str(i) )
                         if len(self.app.latest_w) != len(self.wp_list):
-                            print "Got it!"
+                            progress("Got it!")
                             break
                         self.move_plan.direction = self.app.direction
-                        self.app.direction = -1*self.app.direction
-                        self.move_plan.start(duration = i+1)
-                        yield self.forDuration(8+i)
+                        self.app.direction = -1 * self.app.direction
+                        self.move_plan.start(duration=i+1)
+                        yield self.forDuration(8 + i)
                     self.nwp = True
                     self.count = 0
                     # 90 go and 
                 #    
                 else:
+                    ###
+                    #list_f = get_latest_f()   # [1,2,3,4,5]
+                    #list_b = get_latest_b()
+                    #list_af = get_latest_af() 
+                    #list_ab = get_latest_ab()
+
+                    #if abs(list_af[0]-100) < 45 and abs(list_ab[0]-100) < 45:
+                    #    # threshold = 45 
+                    #    if list_af[0] > list_ab[0]:
+                    #        turn_plan.start(goal=self.phi+100)
+                    #    else:
+                    #        turn_plan.start(goal=self.phi-100)
+                    ###
+
                     self.move_plan.direction = self.app.direction
                     self.nwp = False
-                    self.move_plan.start(duration = 1)
-                    self.count +=1
+                    self.move_plan.start(duration=1)
+                    self.count += 1
 
             yield self.forDuration(0.4) # change to 0.3 if necessary
 
@@ -150,7 +173,7 @@ class Rotate( Plan ):
                 break
             #self.app.cur_axis_pos += self.direction * self.unit
             if self.app.testing:
-                progress("Rotate -- Direction %s, pos %s" % (self.direction, self.app.cur_axis_pos) )
+                progress("Rotate -- Direction %s pos %s" % (self.direction, self.app.cur_axis_pos))
             else:
                 for i in range(20):
                     for i in range(10000):
