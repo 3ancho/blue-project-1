@@ -75,6 +75,7 @@ class AutoPlan ( Plan ):
                 self.app.direction = direction 
                 self.phi = phi
                 # action !!!
+                yield self.forDuration(1)
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
                 self.standard_f = mean([item['f'] for item in queue[:10]])
@@ -83,6 +84,9 @@ class AutoPlan ( Plan ):
 
             # If found next waypoint
             if len(self.app.latest_w) != len(self.wp_list):
+                if len(self.wp_list) <=1:
+                    progress("done!")
+                    self.stop()
                 self.cur_point = self.app.latest_w[0]   
                 self.next_point = self.app.latest_w[1] 
                 progress("Setting new waypoints! Cur: %s -- Next: %s" %\
@@ -92,6 +96,7 @@ class AutoPlan ( Plan ):
                 self.phi = phi           
                 # action !!!
                 self.move_plan.stop()
+                yield self.forDuration(1)
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
                 self.nwp = True
@@ -169,17 +174,17 @@ class AutoPlan ( Plan ):
                     latest_ab = self.get_latest_ab()
                     progress("f= %s      b= %s" % (latest_af, latest_ab))
 
-                    if pre_count > 3 and self.count >= 4 and abs(latest_af-100) > 32 or abs(latest_ab-100) > 32:
+                    if pre_count > 3 and self.count >= 4 and abs(latest_af-100) > 37 and abs(latest_ab-100) > 37:
                         # threshold = 40 
                         self.move_plan.stop()
-                        yield self.forDuration(0.5)
+                        yield self.forDuration(0.6)
                         if latest_af > latest_ab:
                             self.turn_count += 1
                         else:
                             self.turn_count -= 1
 
                         self.turn2_plan.start(goal=(self.phi + self.turn_count *\
-                                self.app.direction * 300))
+                                self.app.direction * 400))
                         yield self.forDuration(0.5)
                         self.turn2_plan.stop()
                         progress("close to path")
@@ -370,7 +375,7 @@ class Turn2( Plan ):
                 self.turn_plan.start()
                 self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() < self.goal_pos:
-                    pass
+                    #pass
       #              progress("turning left")
                     if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 60:
                         self.forDuration(0.04)
@@ -390,9 +395,10 @@ class Turn2( Plan ):
                 self.turn_plan.start()
                 self.app.robot.at.axis.set_pos(self.goal_pos)
                 while self.app.robot.at.axis.get_pos() > self.goal_pos:
-                    pass 
+                    #pass 
          #           progress("turning right")
-                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
+                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 60:
+                        self.forDuration(0.04)
                         self.turn_plan.stop()
                         self.stop()
                         break
