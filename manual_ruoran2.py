@@ -8,7 +8,7 @@ import math
 from collections import deque
 from numpy import arctan2, mean
 
-#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
+#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
 
 # Uncomment above line when using wireless transmitor
 # Important: Axis module's torque_limit need to be set to 50
@@ -43,10 +43,24 @@ class AutoPlan ( Plan ):
         self.move_plan = Move(self.app, direction=1)
         self.turn2_plan = Turn2(self.app)
 
+    def get_latest_f(self):
+        return self.app.f_queue[0]
+
+    def get_latest_b(self):
+        return self.app.b_queue[0]
+
+    def get_latest_af(self):
+        return self.app.af_queue[0]
+
+    def get_latest_ab(self):
+        return self.app.ab_queue[0]
+
     def behavior(self):
+        turn_count = 0
         while True:
             # If found first waypoint 
             if not self.next_point and self.app.latest_w:
+                queue = self.app.queue
                 self.app.move_plan.stop()
                 self.cur_point = self.app.latest_w[0]   
                 self.next_point = self.app.latest_w[1] 
@@ -58,8 +72,9 @@ class AutoPlan ( Plan ):
                 # action !!!
                 self.turn2_plan.start(goal=phi)
                 self.wp_list = self.app.latest_w
-                #self.standard_f = mean([item['f'] for item in queue[:10]])
-                #self.standard_b = mean([item['b'] for item in queue[:10]])
+                self.standard_f = mean([item['f'] for item in queue[:10]])
+                self.standard_b = mean([item['b'] for item in queue[:10]])
+                turn_count = 0
 
             # If found next waypoint
             if len(self.app.latest_w) != len(self.wp_list):
@@ -76,8 +91,9 @@ class AutoPlan ( Plan ):
                 self.wp_list = self.app.latest_w
                 self.nwp = True
                 self.count = 0
-                #self.standard_f = mean([item['f'] for item in queue[:10]])
-                #self.standard_b = mean([item['b'] for item in queue[:10]])
+                self.standard_f = mean([item['f'] for item in queue[:10]])
+                self.standard_b = mean([item['b'] for item in queue[:10]])
+                turn_count = 0
 
             if not self.move_plan.isRunning() and len(self.wp_list)>1\
                     and not self.turn2_plan.isRunning():
@@ -120,17 +136,30 @@ class AutoPlan ( Plan ):
                 #    
                 else:
                     ###
-                    #list_f = get_latest_f()   # [1,2,3,4,5]
-                    #list_b = get_latest_b()
-                    #list_af = get_latest_af() 
-                    #list_ab = get_latest_ab()
+                    #latest_f = self.get_latest_f()   # [1,2,3,4,5]
+                    #latest_b = self.get_latest_b()
 
-                    #if abs(list_af[0]-100) < 45 and abs(list_ab[0]-100) < 45:
-                    #    # threshold = 45 
-                    #    if list_af[0] > list_ab[0]:
-                    #        turn_plan.start(goal=self.phi+100)
-                    #    else:
-                    #        turn_plan.start(goal=self.phi-100)
+                    latest_af = self.get_latest_af() 
+                    latest_ab = self.get_latest_ab()
+                    progress("f= %s      b= %s" % (latest_af, latest_ab))
+
+                    if self.count >= 4 and abs(latest_af-100) > 40 and abs(latest_ab-100) > 40:
+                        # threshold = 40 
+                        self.move_plan.stop()
+                        if latest_af > latest_ab:
+                            turn_count += 1
+                            self.turn2_plan.start(goal=(self.phi + turn_count *\
+                                    self.app.direction * 300))
+                            yield self.forDuration(0.5)
+                            self.turn2_plan.stop()
+                            progress("close to path")
+                        else:
+                            turn_count -= 1
+                            self.turn2_plan.start(goal=(self.phi - \
+                                    self.app.direction * turn_count * 300))
+                            yield self.forDuration(0.5)
+                            self.turn2_plan.stop()
+                            progress("close to path")
                     ###
 
                     self.move_plan.direction = self.app.direction
@@ -138,7 +167,7 @@ class AutoPlan ( Plan ):
                     self.move_plan.start(duration=1)
                     self.count += 1
 
-            yield self.forDuration(0.4) # change to 0.3 if necessary
+            yield self.forDuration(0.5) # change to 0.3 if necessary
 
 class Rotate( Plan ):
     """ RotatePlan will handle the axis servo movement 
@@ -250,7 +279,7 @@ class Turn( Plan ):
         turning the wheels. This need to make sure platform (laser)
         stays put.
     """
-    def __init__(self, app, direction=1, speed=0.105, *arg, **kw):
+    def __init__(self, app, direction=1, speed=0.10, *arg, **kw):
         Plan.__init__(self, app, *arg, **kw)
         self.direction = self.app.direction * -1
         self.speed = speed
@@ -307,6 +336,7 @@ class Turn2( Plan ):
         self.goal_pos = goal
         self.start_pos = self.app.robot.at.axis.get_pos() 
         Plan.start(self)
+        return
 
     def behavior(self):
         while True:
@@ -319,7 +349,8 @@ class Turn2( Plan ):
                 while self.app.robot.at.axis.get_pos() < self.goal_pos:
                     pass
       #              progress("turning left")
-                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 100:
+                    if abs(self.app.robot.at.axis.get_pos() - self.goal_pos) < 60:
+                        self.forDuration(0.04)
                         self.turn_plan.stop()
                         self.stop()
                         break
@@ -348,9 +379,9 @@ class Turn2( Plan ):
                 self.stop()
                 break
 
-#    def onStop(self):
-#        self.turn_plan.stop()
-#        self.rotate_plan.stop()
+    def onStop(self):
+        self.turn_plan.stop()
+        self.rotate_plan.stop()
     
 
 class DrivingApp( JoyApp ):
@@ -368,6 +399,10 @@ class DrivingApp( JoyApp ):
         self.queue = [] 
         self.no_sensor = no_sensor
         self.latest_w = None 
+        self.f_queue = []
+        self.b_queue = []
+        self.ab_queue = [] 
+        self.af_queue = [] 
 
         self.turn_plan = Turn(self, direction=1)
         self.rotate_plan = Rotate(self, direction=1)
@@ -376,7 +411,8 @@ class DrivingApp( JoyApp ):
         m = self.robot.at.axis
         m.mem[m.mcu.torque_limit] = 50
 
-        self.sensor = SensorPlan(self,("67.194.202.70",8080))
+        self.sensor = SensorPlan(self,("67.194.200.121",8080))
+        #self.sensor = SensorPlan(self,("67.194.202.70",8080))
         
         self.turn2_plan = Turn2(self)
 
@@ -567,7 +603,7 @@ class SensorPlan( Plan ):
         msg = self.sock.recv(1024)
       except SocketError, se:
         # If there was no data on the socket --> not a real error, else
-        if se.errno != 11:
+        if se.errno != 35:
           progress("Connection failed: "+str(se))
           self.sock.close()
           self.sock = None
@@ -589,12 +625,23 @@ class SensorPlan( Plan ):
       self.app.queue.insert(0, dic) # store in queue
       if 'w' in dic:
           self.app.latest_w = dic['w']
+      if 'b' in dic:
+          self.app.b_queue.insert(0, dic['b'])
+      if 'f' in dic:
+          self.app.f_queue.insert(0, dic['f'])
+        
+      ab = mean(self.app.b_queue[:5])
+      progress("ab = %s" % ab)
+      self.app.ab_queue.insert(0,ab)
+      af = mean(self.app.f_queue[:5])
+      progress("af = %s" % af)
+      self.app.af_queue.insert(0,af)
 
       dic = dic.items()
       dic.sort()
-      progress("Message received at: " + str(ts))
-      for k,v in dic:
-        progress("   %s : %s" % (k,repr(v)))
+      #progress("Message received at: " + str(ts))
+      #for k,v in dic:
+      #  progress("   %s : %s" % (k,repr(v)))
 
       yield self.forDuration(0.3)
 

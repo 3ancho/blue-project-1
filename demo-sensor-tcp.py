@@ -61,7 +61,7 @@ class SensorPlan( Plan ):
 class WaypointSensorApp( JoyApp ):
   def onStart( self ):
     # Set up the sensor receiver plan
-    self.sensor = SensorPlan(self,("67.194.202.70",8080))
+    self.sensor = SensorPlan(self,("67.194.200.121",8080))
     self.sensor.start()
     
   def onEvent( self, evt ):
