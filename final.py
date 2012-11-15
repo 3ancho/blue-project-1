@@ -10,7 +10,7 @@ from numpy import arctan2, mean
 
 #ckbot.logical.DEFAULT_PORT = "/dev/ttyUSB0 "
 #ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
-#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfd111"
+#ckbot.logical.DEFAULT_PORT = "/dev/tty.usbmodemfa131"
 
 
 # Uncomment above line when using wireless transmitor
